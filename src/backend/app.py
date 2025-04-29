@@ -125,7 +125,6 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
             conversation_messages,
             max_iterations=request_body.max_iterations
         ):
-            include_debate_details = True
             # If the chunk is JSON, it's the final response
             if chunk.startswith("{"):
                 try:
@@ -138,7 +137,7 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
                     }
                     
                     # Add debate details if requested
-                    if include_debate_details and debate_messages:
+                    if request_body.include_debate_details and debate_messages:
                         response_obj["debate_details"] = debate_messages
                         
                     yield json.dumps(response_obj) + "\n"
