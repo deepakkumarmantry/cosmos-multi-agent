@@ -5,6 +5,7 @@ import logging
 from typing import ClassVar
 import datetime
 from utils.util import describe_next_action
+from patterns.agent_manager import AgentManager
 
 from semantic_kernel.kernel import Kernel
 from semantic_kernel.agents import AgentGroupChat
@@ -35,8 +36,7 @@ from semantic_kernel.agents.strategies.selection.selection_strategy import (
 from opentelemetry.trace import get_tracer
 
 from pydantic import Field
-from utils.util import create_agent_from_yaml
-
+########################################
 
 # This pattern demonstrates how a debate between equally skilled models
 # can deliver an outcome that exceeds the capability of the model if 
@@ -110,10 +110,13 @@ class DebateOrchestrator:
         
         self.resourceGroup = os.getenv("AZURE_RESOURCE_GROUP")
 
+        # Create the agent manager
+        self.agent_manager = AgentManager(self.kernel, service_id="executor")
+
     # --------------------------------------------
     # Create Agent Group Chat
     # --------------------------------------------
-    def create_agent_group_chat(self):
+    def create_agent_group_chat(self, agents_directory="agents/cosmos", max_iterations=10):
         """
         Creates and configures an agent group chat with Writer and Critic agents.
         
@@ -124,213 +127,38 @@ class DebateOrchestrator:
         
         self.logger.debug("Creating chat")
         
-
-        critic = create_agent_from_yaml(service_id="executor",
-                                        kernel=self.kernel,
-                                        definition_file_path="agents/critic-team.yaml")
+       # Load all agents from directory
+        agents = self.agent_manager.load_agents_from_directory(agents_directory)
         
-        use_case_agent = create_agent_from_yaml(kernel=self.kernel,
-            service_id="executor", 
-            definition_file_path="agents/cosmos/cosmos-use-case.yaml")
+        if not agents:
+            raise ValueError(f"No agents found in {agents_directory}")
         
-        pricing_agent = create_agent_from_yaml(
-            kernel= self.kernel, 
-            service_id="executor",
-            definition_file_path= "agents/cosmos/cosmos-pricing.yaml"
-        )
-        data_model_agent = create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-data-model.yaml"
-        )
-        integration_agent = create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-integration.yaml"
-        )
-
-        performance_agent = create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-performance-tuning.yaml"
-        )
-        security_agent = create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-security.yaml"
-        )
-        reliability_agent= create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-reliability.yaml"
-        )
-        migration_agent= create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-migration.yaml"
-        )
-        troubleshooting_agent= create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-troubleshooting.yaml"
-        )
-        monitoring_agent = create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-monitoring.yaml"
-        )
-        api_specialist_agent = create_agent_from_yaml(
-            kernel= self.kernel,
-            service_id= "executor",
-            definition_file_path= "agents/cosmos/cosmos-api-specialist.yaml"
-        )
-
-
-        agents=[use_case_agent, pricing_agent, data_model_agent, integration_agent, 
-                             performance_agent, security_agent, reliability_agent, migration_agent,
-                             troubleshooting_agent, monitoring_agent, api_specialist_agent, critic]
-
-
+        # Get critics for termination strategy
+        critics = self.agent_manager.get_critics()
+        if not critics:
+            self.logger.warning("No critic agents found. Using default termination strategy.")
+            # Find any agent named "Critic-Team" if is_critic wasn't specified
+            for agent in agents:
+                if "critic" in agent.name.lower():
+                    critics.append(agent)
+                    self.logger.info(f"Using {agent.name} as critic based on name")
+        
+        # Create agent group chat with all loaded agents
         agent_group_chat = AgentGroupChat(
-                agents=agents,
-                selection_strategy=self.create_selection_strategy(use_case_agent, pricing_agent, data_model_agent, integration_agent, 
-                             performance_agent, security_agent, reliability_agent, migration_agent,
-                             troubleshooting_agent, monitoring_agent, api_specialist_agent),
-                termination_strategy = self.create_termination_strategy(
-                                         agents=[critic],
-                                         maximum_iterations=10)
-                                         )
-
-        return agent_group_chat
+            agents=agents,
+            selection_strategy=self.create_selection_strategy(agents),
+            termination_strategy=self.create_termination_strategy(
+                agents=critics if critics else [agents[-1]],  # Use critics or last agent if no critics
+                maximum_iterations=max_iterations
+            )
+        )
         
-    # --------------------------------------------
-    # Run the agent conversation
-    # --------------------------------------------
-
-
-    async def process_conversation(self, user_id, conversation_messages):
-        """
-        Processes a conversation by orchestrating interactions between Cosmos DB specialist agents.
-        
-        Manages the entire conversation flow from initialization to response collection, uses OpenTelemetry
-        for tracing, and provides status updates throughout the conversation.
-        
-        Args:
-            user_id: Unique identifier for the user, used in session tracking.
-            conversation_messages: List of dictionaries with role, name and content
-                                representing the conversation history.
-                                
-        Yields:
-            Status updates during processing and the final response in JSON format.
-        """
-        try:
-            # Create the agent group chat with specialized Cosmos DB agents
-            agent_group_chat = self.create_agent_group_chat()
-            
-            # Extract user query
-            user_query = None
-            for msg in conversation_messages:
-                if msg.get('role') == 'user':
-                    user_query = msg.get('content')
-                    
-            if not user_query:
-                self.logger.warning("No user query found in conversation messages")
-                user_query = "Tell me about Azure Cosmos DB"
-                
-            # Format user message for add_chat_messages
-            # Create it using the same format as in the working example
-            user_messages = [
-                ChatMessageContent(
-                    role=AuthorRole(m.get('role')),
-                    name=m.get('name'),
-                    content=m.get('content')
-                ) for m in conversation_messages if m.get('role') == 'user'
-            ]
-            
-            # If we have any user messages, add them to the chat
-            if user_messages:
-                try:
-                    # Use add_chat_messages instead of add_message
-                    await agent_group_chat.add_chat_messages(user_messages)
-                    self.logger.info(f"Added {len(user_messages)} user messages to chat")
-                except Exception as e:
-                    self.logger.warning(f"Error adding chat messages: {e}")
-                    # If adding messages fails, we need to create a new conversation
-                    # Starting with empty messages is the fallback
-            
-            # Setup OpenTelemetry tracing
-            tracer = get_tracer(__name__)
-            
-            # Create a unique session ID for tracing purposes
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-            session_id = f"{user_id}-{current_time}"
-            
-            # Track all messages exchanged during this conversation
-            messages = []
-            
-            # Start the traced conversation session
-            with tracer.start_as_current_span(session_id):
-                # Initial status message
-                yield "CosmosUseCaseFit: Evaluating your scenario requirements"
-                
-                # Process each message in the conversation
-                async for agent_message in agent_group_chat.invoke():
-                    # Log the message
-                    self.logger.info("Agent: %s", agent_message.to_dict())
-                    
-                    # Add to messages collection
-                    messages.append(agent_message.to_dict())
-                    
-                    # Generate descriptive status for the client
-                    next_action = await describe_next_action(self.kernel, self.settings_utility, messages)
-                    self.logger.info("%s", next_action)
-                    
-                    # Yield status update
-                    yield f"{next_action}"
-            
-            # Get the final conversation
-            response = list(reversed([item async for item in agent_group_chat.get_chat_messages()]))
-            
-            # Find response from the last Cosmos DB specialist agent to speak
-            cosmos_agents = ["CosmosUseCaseFit", "CosmosPricing", "CosmosDataModel", "CosmosIntegration"]
-            specialist_responses = [r for r in response if r.name in cosmos_agents]
-            
-            if specialist_responses:
-                # Use the most recent specialist response
-                final_response = specialist_responses[0].to_dict()
-            else:
-                # Fallback to the last assistant message
-                assistant_messages = [r.to_dict() for r in response if r.role == "assistant"]
-                if assistant_messages:
-                    final_response = assistant_messages[0]
-                else:
-                    # Ultimate fallback if no messages found
-                    final_response = {
-                        "role": "assistant", 
-                        "content": "I wasn't able to generate a complete response. Please try again with more specific requirements about Azure Cosmos DB."
-                    }
-            
-            # Final message is formatted as JSON to indicate the final response
-            yield json.dumps(final_response)
-            
-        except Exception as e:
-            # Log the error
-            self.logger.error(f"Error in process_conversation: {str(e)}")
-            
-            # Return a user-friendly error message
-            error_response = {
-                "role": "assistant",
-                "content": "I encountered an issue while processing your request. Please try again with a more specific question about Azure Cosmos DB."
-            }
-            yield json.dumps(error_response)
+        return agent_group_chat           
 
     # --------------------------------------------
     # Speaker Selection Strategy
-    # --------------------------------------------
-    # Using executor model since we need to process context - cognitive task
-    def create_selection_strategy(self, use_case_agent, pricing_agent, data_model_agent, integration_agent, 
-                             performance_agent, security_agent, reliability_agent, migration_agent,
-                             troubleshooting_agent, monitoring_agent, api_specialist_agent):
+    # --------------------------------------------      
+    def create_selection_strategy(self, agents):
         """
         Creates a strategy to determine which Cosmos DB specialist agent speaks next in the conversation.
         
@@ -338,18 +166,12 @@ class DebateOrchestrator:
         appropriate next speaker based on the conversation history and specific Cosmos DB domains.
         
         Args:
-            use_case_agent: The agent specializing in Cosmos DB use case evaluation
-            pricing_agent: The agent specializing in Cosmos DB pricing and cost optimization
-            data_model_agent: The agent specializing in Cosmos DB data modeling
-            integration_agent: The agent specializing in Cosmos DB integration
+            agents: List of all available agents
             
         Returns:
             KernelFunctionSelectionStrategy: A strategy for selecting the next speaker.
         """
-        agents = [use_case_agent, pricing_agent, data_model_agent, integration_agent, 
-                             performance_agent, security_agent, reliability_agent, migration_agent,
-                             troubleshooting_agent, monitoring_agent, api_specialist_agent]
-        default_agent = use_case_agent  # Default to use case agent if selection fails
+        default_agent = agents[0]  # Use first agent as default
         
         # Create a well-formatted definition of each agent with clear responsibilities
         agent_definitions = "\n\n".join([
@@ -423,10 +245,10 @@ class DebateOrchestrator:
         """Helper method to provide selection criteria based on agent name"""
         
         criteria = {
-            "CosmosUseCaseFit": "Select when evaluating if Cosmos DB is right for a specific scenario, comparing with alternatives, or determining appropriate API choice",            
-            "CosmosPricing": "Select when discussing costs, RU calculation, throughput provisioning, or optimizing for cost efficiency",        
-            "CosmosDataModel": "Select when designing document schemas, choosing partition keys, or discussing data modeling patterns and trade-offs",            
-            "CosmosIntegration": "Select when covering integration with other Azure services, SDKs, change feed patterns, or deployment architectures",            
+            "CosmosUseCaseFit": "Select when evaluating if Cosmos DB is right for a specific scenario, comparing with alternatives, or determining appropriate API choice",
+            "CosmosPricing": "Select when discussing costs, RU calculation, throughput provisioning, or optimizing for cost efficiency",
+            "CosmosDataModel": "Select when designing document schemas, choosing partition keys, or discussing data modeling patterns and trade-offs",
+            "CosmosIntegration": "Select when covering integration with other Azure services, SDKs, change feed patterns, or deployment architectures",
             "CosmosPerformanceTuning": "Select when addressing performance optimization, query efficiency, indexing strategies, or RU consumption patterns",
             "CosmosSecurity": "Select when discussing security configurations, authentication, authorization, encryption, or compliance requirements",
             "CosmosReliability": "Select when covering high availability, disaster recovery, multi-region deployments, or consistency level selection",
@@ -434,13 +256,12 @@ class DebateOrchestrator:
             "CosmosTroubleshooting": "Select when resolving specific errors, connectivity issues, throttling problems, or other operational challenges",
             "CosmosMonitoring": "Select when setting up monitoring, interpreting metrics, configuring alerts, or implementing operational dashboards",
             "CosmosAPISpecialist": "Select when discussing specific API implementations, compatibility issues, or API-specific optimizations",
-            "Critic-Team": "Select after major solution components have been proposed to evaluate completeness and identify gaps",
-
+            "Critic-Team": "Select after major solution components have been proposed to evaluate completeness and identify gaps"
         }
         
         return criteria.get(agent_name, "Select when topics related to this agent's expertise are being discussed")
 
-    def create_termination_strategy(self, agents, maximum_iterations):
+    def create_termination_strategy(self, agents, maximum_iterations=10):
         """
         Creates a strategy to determine when the agent conversation should end.
         
@@ -468,7 +289,7 @@ class DebateOrchestrator:
                     You are evaluating whether a conversation between specialized Azure Cosmos DB agents has reached a 
                     satisfactory conclusion.
                     
-                    Review the conversation and evaluate if all key requirements have been addressed:
+                    Review the conversation and evaluate if all key requirements have been addressed across these potential areas:
                     1. Use case suitability evaluation
                     2. Pricing and cost optimization strategies
                     3. Data model design and schema optimization
@@ -480,7 +301,7 @@ class DebateOrchestrator:
                     9. Troubleshooting guidance (if applicable)
                     10. Monitoring configuration (if applicable)
                     11. API-specific implementation details (if applicable)
-
+                    
                     Note that not all areas need to be addressed - only those relevant to the user's query.
                     
                     First, provide a score from 0-10 indicating how completely requirements have been met.
@@ -563,3 +384,133 @@ class DebateOrchestrator:
                 return should_terminate
                 
         return CompletionTerminationStrategy(agents=agents, maximum_iterations=maximum_iterations)
+
+    async def process_conversation(self, user_id, conversation_messages, max_iterations=10):
+        """
+        Processes a conversation by orchestrating interactions between Cosmos DB specialist agents.
+        
+        Manages the entire conversation flow from initialization to response collection, uses OpenTelemetry
+        for tracing, and provides status updates throughout the conversation.
+        
+        Args:
+            user_id: Unique identifier for the user, used in session tracking.
+            conversation_messages: List of dictionaries with role, name and content
+                                representing the conversation history.
+            max_iterations: Maximum number of conversation turns.
+                            
+        Yields:
+            Status updates during processing and the final response in JSON format.
+        """
+        try:
+            # Create the agent group chat with specialized Cosmos DB agents
+            self.agent_group_chat = self.create_agent_group_chat(
+                agents_directory="agents/cosmos", 
+                max_iterations=max_iterations
+            )
+            
+            # Extract user query
+            user_query = None
+            for msg in conversation_messages:
+                if msg.get('role') == 'user':
+                    user_query = msg.get('content')
+                    
+            if not user_query:
+                self.logger.warning("No user query found in conversation messages")
+                user_query = "Tell me about Azure Cosmos DB"
+                
+            # Format user message for add_chat_messages
+            user_messages = [
+                ChatMessageContent(
+                    role=AuthorRole(m.get('role')),
+                    name=m.get('name'),
+                    content=m.get('content')
+                ) for m in conversation_messages if m.get('role') == 'user'
+            ]
+            
+            # If we have any user messages, add them to the chat
+            if user_messages:
+                try:
+                    await self.agent_group_chat.add_chat_messages(user_messages)
+                    self.logger.info(f"Added {len(user_messages)} user messages to chat")
+                except Exception as e:
+                    self.logger.warning(f"Error adding chat messages: {e}")
+            
+            # Setup OpenTelemetry tracing
+            tracer = get_tracer(__name__)
+            
+            # Create a unique session ID for tracing purposes
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+            session_id = f"{user_id}-{current_time}"
+            
+            # Track all messages exchanged during this conversation
+            messages = []
+            
+            # List to store all debate messages for the response
+            debate_transcript = []
+            
+            # Start the traced conversation session
+            with tracer.start_as_current_span(session_id):
+                # Initial status message
+                yield "Evaluating your Cosmos DB requirements..."
+                
+                # Process each message in the conversation
+                async for agent_message in self.agent_group_chat.invoke():
+                    # Log the message
+                    self.logger.info("Agent: %s", agent_message.to_dict())
+                    
+                    # Add to messages collection
+                    message_dict = agent_message.to_dict()
+                    messages.append(message_dict)
+                    
+                    # Add to debate transcript
+                    debate_transcript.append(message_dict)
+                    
+                    # Generate descriptive status for the client
+                    next_action = await describe_next_action(self.kernel, self.settings_utility, messages)
+                    self.logger.info("%s", next_action)
+                    
+                    # Yield status update
+                    yield f"{next_action}"
+            
+            # Get the final conversation
+            response = list(reversed([item async for item in self.agent_group_chat.get_chat_messages()]))
+            
+            # Find response from the last Cosmos DB specialist agent to speak
+            # Create a list of all Cosmos agent names by checking agent prefixes
+            cosmos_agents = [agent.name for agent in self.agent_manager.get_all_agents() 
+                            if agent.name.startswith("Cosmos")]
+            
+            specialist_responses = [r for r in response if r.name in cosmos_agents]
+            
+            if specialist_responses:
+                # Use the most recent specialist response
+                final_response = specialist_responses[0].to_dict()
+            else:
+                # Fallback to the last assistant message
+                assistant_messages = [r.to_dict() for r in response if r.role == "assistant"]
+                if assistant_messages:
+                    final_response = assistant_messages[0]
+                else:
+                    # Ultimate fallback if no messages found
+                    final_response = {
+                        "role": "assistant", 
+                        "content": "I wasn't able to generate a complete response. Please try again with more specific requirements about Azure Cosmos DB."
+                    }
+            
+            # Add the transcript to the final response
+            final_response["debate_transcript"] = debate_transcript
+            
+            # Final message is formatted as JSON to indicate the final response
+            yield json.dumps(final_response)
+            
+        except Exception as e:
+            # Log the error
+            self.logger.error(f"Error in process_conversation: {str(e)}", exc_info=True)
+            
+            # Return a user-friendly error message
+            error_response = {
+                "role": "assistant",
+                "content": "I encountered an issue while processing your request. Please try again with a more specific question about Azure Cosmos DB.",
+                "error": str(e)
+            }
+            yield json.dumps(error_response)

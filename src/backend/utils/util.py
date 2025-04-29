@@ -174,51 +174,6 @@ def set_up_logging():
     # handler.addFilter(logging.Filter("semantic_kernel"))
     handler.addFilter(KernelFilter())
 
-# --------------------------------------------
-# UTILITY - CREATES an agent based on YAML definition
-# --------------------------------------------
-def create_agent_from_yaml(kernel, service_id, definition_file_path, reasoning_effort=None):
-    """
-    Creates a ChatCompletionAgent from a YAML definition file.
-    
-    Args:
-        kernel: The Semantic Kernel instance
-        service_id: The service ID to use for the agent
-        definition_file_path: Path to the YAML file containing agent definition
-        reasoning_effort: Optional reasoning effort parameter for OpenAI models
-        
-    Returns:
-        ChatCompletionAgent: Configured agent instance
-        
-    The YAML definition should include name, description, instructions, 
-    temperature, and included_plugins.
-    """
-        
-    with open(definition_file_path, 'r', encoding='utf-8') as file:
-        definition = yaml.safe_load(file)
-        
-    settings = AzureChatPromptExecutionSettings(
-            temperature=definition.get('temperature', 0.5),
-            function_choice_behavior=FunctionChoiceBehavior.Auto(
-                filters={"included_plugins": definition.get('included_plugins', [])}
-            ))
-
-    # Resoning model specifics
-    model_id = kernel.get_service(service_id=service_id).ai_model_id
-    if model_id.lower().startswith("o"):
-        settings.temperature = None
-        settings.reasoning_effort = reasoning_effort
-        
-    agent = ChatCompletionAgent(
-        service=kernel.get_service(service_id=service_id),
-        kernel=kernel,
-        arguments=KernelArguments(settings=settings),
-        name=definition['name'],
-        description=definition['description'],
-        instructions=definition['instructions']
-    )
-    
-    return agent
     
 async def describe_next_action(kernel, settings, messages):
     """
