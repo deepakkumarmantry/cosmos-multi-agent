@@ -116,7 +116,7 @@ class DebateOrchestrator:
     # --------------------------------------------
     # Create Agent Group Chat
     # --------------------------------------------
-    def create_agent_group_chat(self, agents_directory="agents/cosmos", max_iterations=10):
+    def create_agent_group_chat(self, agents_directory="agents/cosmos", maximum_iterations=5):
         """
         Creates and configures an agent group chat with Writer and Critic agents.
         
@@ -149,7 +149,7 @@ class DebateOrchestrator:
             selection_strategy=self.create_selection_strategy(agents),
             termination_strategy=self.create_termination_strategy(
                 agents=critics if critics else [agents[-1]],  # Use critics or last agent if no critics
-                maximum_iterations=max_iterations
+                maximum_iterations=maximum_iterations
             )
         )
         
@@ -261,7 +261,7 @@ class DebateOrchestrator:
         
         return criteria.get(agent_name, "Select when topics related to this agent's expertise are being discussed")
 
-    def create_termination_strategy(self, agents, maximum_iterations=10):
+    def create_termination_strategy(self, agents, maximum_iterations=5):
         """
         Creates a strategy to determine when the agent conversation should end.
         
@@ -385,7 +385,7 @@ class DebateOrchestrator:
                 
         return CompletionTerminationStrategy(agents=agents, maximum_iterations=maximum_iterations)
 
-    async def process_conversation(self, user_id, conversation_messages, max_iterations=10):
+    async def process_conversation(self, user_id, conversation_messages, maximum_iterations=5):
         """
         Processes a conversation by orchestrating interactions between Cosmos DB specialist agents.
         
@@ -396,7 +396,7 @@ class DebateOrchestrator:
             user_id: Unique identifier for the user, used in session tracking.
             conversation_messages: List of dictionaries with role, name and content
                                 representing the conversation history.
-            max_iterations: Maximum number of conversation turns.
+            maximum_iterations: Maximum number of conversation turns.
                             
         Yields:
             Status updates during processing and the final response in JSON format.
@@ -405,7 +405,7 @@ class DebateOrchestrator:
             # Create the agent group chat with specialized Cosmos DB agents
             self.agent_group_chat = self.create_agent_group_chat(
                 agents_directory="agents/cosmos", 
-                max_iterations=max_iterations
+                maximum_iterations=maximum_iterations
             )
             
             # Extract user query

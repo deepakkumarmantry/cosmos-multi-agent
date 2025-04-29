@@ -63,7 +63,7 @@ class CosmosSupportRequest(BaseModel):
     question: str = "Tell me about Azure Cosmos DB"
     user_id: str = "default_user"
     include_debate_details: bool = False
-    max_iterations: int = 10  # Optional parameter to control conversation length
+    maximum_iterations: int = 10  # Optional parameter to control conversation length
 
 class DebateStatusUpdate(BaseModel):
     type: str = "status"
@@ -90,7 +90,7 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
             - question (str): The user's Cosmos DB question
             - user_id (str): Identifier for the user making the request
             - include_debate_details (bool): Whether to include full debate transcript
-            - max_iterations (int): Maximum number of agent conversation turns
+            - maximum_iterations (int): Maximum number of agent conversation turns
 
     Returns:
         StreamingResponse: A streaming response with status updates and final answer.
@@ -123,7 +123,7 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
         async for chunk in orchestrator.process_conversation(
             user_id, 
             conversation_messages,
-            max_iterations=request_body.max_iterations
+            maximum_iterations=request_body.maximum_iterations
         ):
             # If the chunk is JSON, it's the final response
             if chunk.startswith("{"):
