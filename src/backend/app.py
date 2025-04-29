@@ -18,6 +18,7 @@ from utils.util import (
     set_up_metrics,
     set_up_logging,
 )
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv_from_azd()
 set_up_tracing()
@@ -40,14 +41,21 @@ logging.getLogger("azure.monitor.opentelemetry.exporter.export").setLevel(
 debate_orchestrator = DebateOrchestrator()
 
 app = FastAPI()
-
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 logger.info(
     "Diagnostics: %s",
     os.getenv("SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS"),
 )
 
 
-@app.post("/cosmos-support")
+@app.post("/api/v1/cosmos-support")
 async def http_cosmos_support(request_body: dict = Body(...)):
     """
     Generate a blog post about a specified topic using the debate orchestrator.
