@@ -131,33 +131,74 @@ class DebateOrchestrator:
         
         use_case_agent = create_agent_from_yaml(kernel=self.kernel,
             service_id="executor", 
-            definition_file_path="agents/cosmos-use-case.yaml")
+            definition_file_path="agents/cosmos/cosmos-use-case.yaml")
         
         pricing_agent = create_agent_from_yaml(
             kernel= self.kernel, 
             service_id="executor",
-            definition_file_path= "agents/cosmos-pricing.yaml"
+            definition_file_path= "agents/cosmos/cosmos-pricing.yaml"
         )
         data_model_agent = create_agent_from_yaml(
             kernel= self.kernel,
             service_id= "executor",
-            definition_file_path= "agents/cosmos-data-model.yaml"
+            definition_file_path= "agents/cosmos/cosmos-data-model.yaml"
         )
         integration_agent = create_agent_from_yaml(
             kernel= self.kernel,
             service_id= "executor",
-            definition_file_path= "agents/cosmos-integration.yaml"
-        )        
-        agents=[use_case_agent, pricing_agent, data_model_agent, integration_agent,critic]
+            definition_file_path= "agents/cosmos/cosmos-integration.yaml"
+        )
+
+        performance_agent = create_agent_from_yaml(
+            kernel= self.kernel,
+            service_id= "executor",
+            definition_file_path= "agents/cosmos/cosmos-performance-tuning.yaml"
+        )
+        security_agent = create_agent_from_yaml(
+            kernel= self.kernel,
+            service_id= "executor",
+            definition_file_path= "agents/cosmos/cosmos-security.yaml"
+        )
+        reliability_agent= create_agent_from_yaml(
+            kernel= self.kernel,
+            service_id= "executor",
+            definition_file_path= "agents/cosmos/cosmos-reliability.yaml"
+        )
+        migration_agent= create_agent_from_yaml(
+            kernel= self.kernel,
+            service_id= "executor",
+            definition_file_path= "agents/cosmos/cosmos-migration.yaml"
+        )
+        troubleshooting_agent= create_agent_from_yaml(
+            kernel= self.kernel,
+            service_id= "executor",
+            definition_file_path= "agents/cosmos/cosmos-troubleshooting.yaml"
+        )
+        monitoring_agent = create_agent_from_yaml(
+            kernel= self.kernel,
+            service_id= "executor",
+            definition_file_path= "agents/cosmos/cosmos-monitoring.yaml"
+        )
+        api_specialist_agent = create_agent_from_yaml(
+            kernel= self.kernel,
+            service_id= "executor",
+            definition_file_path= "agents/cosmos/cosmos-api-specialist.yaml"
+        )
+
+
+        agents=[use_case_agent, pricing_agent, data_model_agent, integration_agent, 
+                             performance_agent, security_agent, reliability_agent, migration_agent,
+                             troubleshooting_agent, monitoring_agent, api_specialist_agent, critic]
 
 
         agent_group_chat = AgentGroupChat(
                 agents=agents,
-                selection_strategy=self.create_selection_strategy(use_case_agent, pricing_agent, data_model_agent, integration_agent),
-                # termination_strategy=DefaultTerminationStrategy(maximum_iterations=4),
+                selection_strategy=self.create_selection_strategy(use_case_agent, pricing_agent, data_model_agent, integration_agent, 
+                             performance_agent, security_agent, reliability_agent, migration_agent,
+                             troubleshooting_agent, monitoring_agent, api_specialist_agent),
                 termination_strategy = self.create_termination_strategy(
                                          agents=[critic],
-                                         maximum_iterations=6)
+                                         maximum_iterations=10)
                                          )
 
         return agent_group_chat
@@ -287,7 +328,9 @@ class DebateOrchestrator:
     # Speaker Selection Strategy
     # --------------------------------------------
     # Using executor model since we need to process context - cognitive task
-    def create_selection_strategy(self, use_case_agent, pricing_agent, data_model_agent, integration_agent):
+    def create_selection_strategy(self, use_case_agent, pricing_agent, data_model_agent, integration_agent, 
+                             performance_agent, security_agent, reliability_agent, migration_agent,
+                             troubleshooting_agent, monitoring_agent, api_specialist_agent):
         """
         Creates a strategy to determine which Cosmos DB specialist agent speaks next in the conversation.
         
@@ -303,7 +346,9 @@ class DebateOrchestrator:
         Returns:
             KernelFunctionSelectionStrategy: A strategy for selecting the next speaker.
         """
-        agents = [use_case_agent, pricing_agent, data_model_agent, integration_agent]
+        agents = [use_case_agent, pricing_agent, data_model_agent, integration_agent, 
+                             performance_agent, security_agent, reliability_agent, migration_agent,
+                             troubleshooting_agent, monitoring_agent, api_specialist_agent]
         default_agent = use_case_agent  # Default to use case agent if selection fails
         
         # Create a well-formatted definition of each agent with clear responsibilities
@@ -378,15 +423,19 @@ class DebateOrchestrator:
         """Helper method to provide selection criteria based on agent name"""
         
         criteria = {
-            "CosmosUseCaseFit": "Select when evaluating if Cosmos DB is right for a specific scenario, comparing with alternatives, or determining appropriate API choice",
-            
-            "CosmosPricing": "Select when discussing costs, RU calculation, throughput provisioning, or optimizing for cost efficiency",
-            
-            "CosmosDataModel": "Select when designing document schemas, choosing partition keys, or discussing data modeling patterns and trade-offs",
-            
-            "CosmosIntegration": "Select when covering integration with other Azure services, SDKs, change feed patterns, or deployment architectures",
-            
-            "Critic-Team": "Select after major solution components have been proposed to evaluate completeness and identify gaps"
+            "CosmosUseCaseFit": "Select when evaluating if Cosmos DB is right for a specific scenario, comparing with alternatives, or determining appropriate API choice",            
+            "CosmosPricing": "Select when discussing costs, RU calculation, throughput provisioning, or optimizing for cost efficiency",        
+            "CosmosDataModel": "Select when designing document schemas, choosing partition keys, or discussing data modeling patterns and trade-offs",            
+            "CosmosIntegration": "Select when covering integration with other Azure services, SDKs, change feed patterns, or deployment architectures",            
+            "CosmosPerformanceTuning": "Select when addressing performance optimization, query efficiency, indexing strategies, or RU consumption patterns",
+            "CosmosSecurity": "Select when discussing security configurations, authentication, authorization, encryption, or compliance requirements",
+            "CosmosReliability": "Select when covering high availability, disaster recovery, multi-region deployments, or consistency level selection",
+            "CosmosMigration": "Select when planning migrations from other databases, discussing schema transformation, or data validation strategies",
+            "CosmosTroubleshooting": "Select when resolving specific errors, connectivity issues, throttling problems, or other operational challenges",
+            "CosmosMonitoring": "Select when setting up monitoring, interpreting metrics, configuring alerts, or implementing operational dashboards",
+            "CosmosAPISpecialist": "Select when discussing specific API implementations, compatibility issues, or API-specific optimizations",
+            "Critic-Team": "Select after major solution components have been proposed to evaluate completeness and identify gaps",
+
         }
         
         return criteria.get(agent_name, "Select when topics related to this agent's expertise are being discussed")
@@ -420,10 +469,19 @@ class DebateOrchestrator:
                     satisfactory conclusion.
                     
                     Review the conversation and evaluate if all key requirements have been addressed:
-                    1. Has the use case suitability been fully evaluated?
-                    2. Have pricing and cost optimization strategies been provided?
-                    3. Has a complete data model design been developed?
-                    4. Have integration requirements been addressed?
+                    1. Use case suitability evaluation
+                    2. Pricing and cost optimization strategies
+                    3. Data model design and schema optimization
+                    4. Integration with other services
+                    5. Performance optimization recommendations
+                    6. Security and compliance requirements
+                    7. Reliability and disaster recovery planning
+                    8. Migration strategy (if applicable)
+                    9. Troubleshooting guidance (if applicable)
+                    10. Monitoring configuration (if applicable)
+                    11. API-specific implementation details (if applicable)
+
+                    Note that not all areas need to be addressed - only those relevant to the user's query.
                     
                     First, provide a score from 0-10 indicating how completely requirements have been met.
                     Then provide your assessment in this format:

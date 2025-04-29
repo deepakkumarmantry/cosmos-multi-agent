@@ -223,40 +223,48 @@ def create_agent_from_yaml(kernel, service_id, definition_file_path, reasoning_e
 async def describe_next_action(kernel, settings, messages):
     """
     Determines the next action in the Cosmos DB agent conversation workflow.
-    
+   
     Args:
         kernel: The Semantic Kernel instance
         settings: Execution settings for the prompt
         messages: Conversation history between agents
-        
+       
     Returns:
         str: A brief summary of the next action, indicating which Cosmos DB specialist agent is acting
     """
     # Get the last message to determine which agent just spoke
     last_message = messages[-1] if messages else {"name": "None"}
     last_agent = last_message.get("name", "Unknown")
-    
+   
     next_action = await kernel.invoke_prompt(
         function_name="describe_next_action",
         prompt=f"""
         Given the following conversation between Azure Cosmos DB specialist agents, describe the next action.
-        
+       
         Provide a brief summary (3-5 words) of what's happening next in the format: "AGENT: Action description"
-        
+       
         AGENTS:
         - CosmosUseCaseFit: Evaluates if Cosmos DB fits the scenario
         - CosmosPricing: Analyzes cost optimization
         - CosmosDataModel: Designs optimal data structure
         - CosmosIntegration: Plans service connections
+        - CosmosPerformanceTuning: Optimizes database performance
+        - CosmosSecurity: Implements security configurations
+        - CosmosReliability: Ensures high availability
+        - CosmosMigration: Plans data migration strategy
+        - CosmosTroubleshooting: Resolves errors and issues
+        - CosmosMonitoring: Sets up monitoring solutions
+        - CosmosAPISpecialist: Guides on API implementation
         - Critic-Team: Evaluates completeness of solution
-        
+       
         If the last message is from Critic-Team with a score of 8 or higher, respond with "APPROVED: Solution complete"
-        
+        If a complete solution has been reached, respond with "FINAL: Complete solution provided"
+       
         Last agent to speak: {last_agent}
-        
+       
         CONVERSATION HISTORY: {messages[-3:] if len(messages) >= 3 else messages}
         """,
         settings=settings
     )
-    
+   
     return next_action
