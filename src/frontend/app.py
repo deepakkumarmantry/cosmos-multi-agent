@@ -103,11 +103,39 @@ if "messages" not in st.session_state:
 if "status_messages" not in st.session_state:
     st.session_state.status_messages = []
 
+# Initialize session state for debate details toggle
+if "show_debate_details" not in st.session_state:
+    st.session_state.show_debate_details = False
+
+# Initialize session state for max iterations
+if "max_iterations" not in st.session_state:
+    st.session_state.max_iterations = 10
+
 # Setup sidebar with user information and logout link
 st.sidebar.title("Azure Cosmos DB Support")
 st.sidebar.write(f"Welcome, {get_principal_display_name()}!")
 st.sidebar.markdown(
     '<a href="/.auth/logout" target = "_self">Sign Out</a>', unsafe_allow_html=True
+)
+
+# Add configuration options in the sidebar
+st.sidebar.markdown("---")
+st.sidebar.header("Configuration")
+
+# Add toggle for debate details
+st.session_state.show_debate_details = st.sidebar.checkbox(
+    "Include debate details in response",
+    value=st.session_state.show_debate_details,
+    help="Show the full conversation between AI agents",
+)
+
+# Add slider for maximum iterations
+st.session_state.max_iterations = st.sidebar.slider(
+    "Maximum agent iterations",
+    min_value=1,
+    max_value=20,
+    value=st.session_state.max_iterations,
+    help="Maximum number of conversation turns between agents",
 )
 
 # Add some helpful information in the sidebar
@@ -133,7 +161,30 @@ st.markdown(
 # Display chat messages from history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        if message["role"] == "assistant":
+            # Show thinking process if available in history
+            if "status_messages" in message:
+                with st.expander(
+                    "🤔 Thinking Process (Click to hide details)", expanded=False
+                ):
+                    st.markdown("**Evaluating your Cosmos DB requirements...**")
+                    st.markdown("")
+                    for status_msg in message["status_messages"]:
+                        st.markdown(f"• {status_msg}")
+
+            # Show main response
+            st.markdown(message["content"])
+
+            # Show debate details if available and enabled
+            if "debate_details" in message and st.session_state.show_debate_details:
+                with st.expander("View detailed agent conversation"):
+                    for detail in message["debate_details"]:
+                        st.write(
+                            f"**{detail.get('name', detail.get('role', 'Agent'))}:** {detail.get('content', '')}"
+                        )
+        else:
+            # User messages
+            st.markdown(message["content"])
 
 # React to user input
 if prompt := st.chat_input("Ask about Azure Cosmos DB..."):
@@ -146,39 +197,97 @@ if prompt := st.chat_input("Ask about Azure Cosmos DB..."):
 
     # Call API to get response
     with st.chat_message("assistant"):
-        status_placeholder = st.empty()
-        status_container = st.container()
         response_placeholder = st.empty()
 
-        # Display status messages in the status container
-        status_placeholder.markdown(
-            "**Our Cosmos DB specialists are working on your request...**"
+        # Create thinking process expander that updates in real-time
+        thinking_expander = st.expander(
+            "🤔 Thinking Process (Click to hide details)", expanded=True
         )
+
+        with thinking_expander:
+            thinking_container = st.container()
+            thinking_status = st.empty()
 
         try:
             # Reset status messages for this conversation
             st.session_state.status_messages = []
 
-            # Call backend API to get response
+            # Call backend API to get response with updated payload
             url = f"{os.getenv('BACKEND_ENDPOINT', 'http://localhost:8000')}/api/v1/cosmos-support"
-            payload = {"question": prompt, "user_id": get_principal_id()}
+            payload = {
+                "question": prompt,
+                "user_id": get_principal_id(),
+                "include_debate_details": st.session_state.show_debate_details,
+                "maximum_iterations": st.session_state.max_iterations,
+            }
+
+            # Show initial status
+            with thinking_container:
+                st.markdown("**Evaluating your Cosmos DB requirements...**")
 
             with requests.post(url, json=payload, stream=True) as response:
                 final_response = None
+                debate_details = []
 
                 for line in response.iter_lines():
-                    result = line.decode("utf-8")
+                    if not line:
+                        continue
 
-                    # Check if the result is valid JSON (final response) or status update
+                    result = line.decode("utf-8").strip()
+
+                    if not result:
+                        continue
+
+                    # All responses should now be valid JSON with type field
                     if is_valid_json(result):
-                        final_response = json.loads(result)
+                        parsed_result = json.loads(result)
+
+                        if parsed_result.get("type") == "status":
+                            # Handle status update
+                            agent = parsed_result.get("agent")
+                            message = parsed_result.get("message", "")
+
+                            # Format status message with agent info if available
+                            if agent:
+                                # Highlight agent names with colors
+                                if "CRITIC" in agent.upper():
+                                    status_msg = f"**:blue[{agent}]**: {message}"
+                                elif "COSMOS" in agent.upper():
+                                    status_msg = f"**:green[{agent}]**: {message}"
+                                elif "INTEGRATION" in agent.upper():
+                                    status_msg = f"**:orange[{agent}]**: {message}"
+                                else:
+                                    status_msg = f"**:gray[{agent}]**: {message}"
+                            else:
+                                status_msg = f"**AGENT**: {message}"
+
+                            st.session_state.status_messages.append(status_msg)
+
+                            # Update the thinking process container
+                            with thinking_container:
+                                st.markdown(
+                                    "**Evaluating your Cosmos DB requirements...**"
+                                )
+                                st.markdown("")
+                                for msg in st.session_state.status_messages:
+                                    st.markdown(f"• {msg}")
+
+                        elif parsed_result.get("type") == "response":
+                            # Handle final response
+                            final_response = parsed_result.get("final_answer", {})
+                            debate_details = parsed_result.get("debate_details", [])
+                            break
                     else:
-                        # Update status messages
-                        st.session_state.status_messages.append(result)
-                        status_updates = "\n".join(
-                            [f"• {msg}" for msg in st.session_state.status_messages]
-                        )
-                        status_container.markdown(status_updates)
+                        # Fallback: treat as plain text status message
+                        status_msg = f"**AGENT**: {result}"
+                        st.session_state.status_messages.append(status_msg)
+
+                        # Update the thinking process container
+                        with thinking_container:
+                            st.markdown("**Evaluating your Cosmos DB requirements...**")
+                            st.markdown("")
+                            for msg in st.session_state.status_messages:
+                                st.markdown(f"• {msg}")
 
                 # Display final response
                 if final_response:
@@ -187,17 +296,30 @@ if prompt := st.chat_input("Ask about Azure Cosmos DB..."):
                     )
                     response_placeholder.markdown(response_content)
 
+                    # Prepare message for chat history
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": response_content,
+                    }
+
+                    # Add status messages to chat history for replay
+                    if st.session_state.status_messages:
+                        assistant_message["status_messages"] = (
+                            st.session_state.status_messages.copy()
+                        )
+
+                    # Add debate details if available
+                    if debate_details:
+                        assistant_message["debate_details"] = debate_details
+
                     # Add assistant response to chat history
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": response_content}
-                    )
+                    st.session_state.messages.append(assistant_message)
+
                 else:
                     response_placeholder.markdown(
                         "Sorry, I couldn't generate a response."
                     )
 
-            # Clear status placeholder after completion
-            status_placeholder.empty()
-
         except Exception as e:
             st.error(f"Error communicating with the backend: {str(e)}")
+            logging.error(f"API request failed: {str(e)}")

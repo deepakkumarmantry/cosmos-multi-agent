@@ -169,7 +169,9 @@ class DebateOrchestrator:
         agent_group_chat = AgentGroupChat(
             agents=agents,
             selection_strategy=SequentialSelectionStrategy(),
-            termination_strategy=DefaultTerminationStrategy(maximum_iterations=10),
+            termination_strategy=DefaultTerminationStrategy(
+                maximum_iterations=maximum_iterations
+            ),
             # selection_strategy=self.create_selection_strategy(agents),
             # termination_strategy=self.create_termination_strategy(
             #     agents=critics
