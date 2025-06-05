@@ -16,4 +16,6 @@ dependencies = [
     "azure-monitor-opentelemetry-exporter>=1.0.0b34",
     "azure-identity>=1.19.0",
     "azure-ai-inference[opentelemetry]>=1.0.0b9",
+    "azure-search-documents"
+    
 ]

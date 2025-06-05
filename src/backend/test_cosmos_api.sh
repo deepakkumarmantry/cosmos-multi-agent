@@ -13,7 +13,6 @@ curl -X POST http://localhost:5000/cosmos-support \
 # Note: This is a streaming API that returns multiple JSON responses
 # Each response contains an agent name, role, and content representing 
 # specialist insights from one of the four Cosmos DB experts:
-# - CosmosUseCaseFit (Use case evaluation)
 # - CosmosPricing (Pricing and cost optimization)
 # - CosmosDataModel (Data modeling and schema design)
 # - CosmosIntegration (Integration patterns)

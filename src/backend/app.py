@@ -58,6 +58,7 @@ import uuid
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel
 
+
 # Define request and response models
 class CosmosSupportRequest(BaseModel):
     question: str = "Tell me about Azure Cosmos DB"
@@ -65,20 +66,27 @@ class CosmosSupportRequest(BaseModel):
     include_debate_details: bool = False
     maximum_iterations: int = 10  # Optional parameter to control conversation length
 
+
 class DebateStatusUpdate(BaseModel):
     type: str = "status"
     message: str
     agent: Optional[str] = None
+
 
 class DebateMessage(BaseModel):
     role: str
     name: Optional[str] = None
     content: str
 
+
 class DebateResponse(BaseModel):
     type: str = "response"
     final_answer: Dict[str, Any]
     debate_details: Optional[List[DebateMessage]] = None
+
+
+orchestrator = DebateOrchestrator()
+
 
 @app.post("/api/v1/cosmos-support")
 async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
@@ -102,10 +110,12 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
 
     # Generate a unique conversation ID if not provided
     user_id = request_body.user_id or f"user_{uuid.uuid4()}"
-    
+
     # Create conversation message
-    conversation_messages = [{"role": "user", "name": "user", "content": request_body.question}]
-    
+    conversation_messages = [
+        {"role": "user", "name": "user", "content": request_body.question}
+    ]
+
     # Store all debate messages if details are requested
     debate_messages = [] if request_body.include_debate_details else None
 
@@ -119,34 +129,28 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
         # Create a fresh agent group chat for this conversation
         # This ensures we're using the right agents for this specific question
         orchestrator = DebateOrchestrator()
-        
+
         async for chunk in orchestrator.process_conversation(
-            user_id, 
+            user_id,
             conversation_messages,
-            maximum_iterations=request_body.maximum_iterations
+            maximum_iterations=request_body.maximum_iterations,
         ):
             # If the chunk is JSON, it's the final response
             if chunk.startswith("{"):
                 try:
                     final_response = json.loads(chunk)
-                    
+
                     # Construct the final response object
-                    response_obj = {
-                        "type": "response",
-                        "final_answer": final_response
-                    }
-                    
+                    response_obj = {"type": "response", "final_answer": final_response}
+
                     # Add debate details if requested
                     if request_body.include_debate_details and debate_messages:
                         response_obj["debate_details"] = debate_messages
-                        
+
                     yield json.dumps(response_obj) + "\n"
                 except json.JSONDecodeError:
                     # If JSON parsing fails, treat it as a status update
-                    status = {
-                        "type": "status",
-                        "message": chunk
-                    }
+                    status = {"type": "status", "message": chunk}
                     yield json.dumps(status) + "\n"
             else:
                 # This is a status update
@@ -157,19 +161,20 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
                     parts = chunk.split(": ", 1)
                     if len(parts) == 2:
                         agent, message = parts
-                
-                status = {
-                    "type": "status",
-                    "message": message,
-                    "agent": agent
-                }
+
+                status = {"type": "status", "message": message, "agent": agent}
                 yield json.dumps(status) + "\n"
-                
+
                 # Store message in debate history if details are requested
-                if request_body.include_debate_details and hasattr(orchestrator, "agent_group_chat"):
+                if request_body.include_debate_details and hasattr(
+                    orchestrator, "agent_group_chat"
+                ):
                     try:
                         # Get the latest message from the group chat
-                        latest_messages = [msg async for msg in orchestrator.agent_group_chat.get_chat_messages()]
+                        latest_messages = [
+                            msg
+                            async for msg in orchestrator.agent_group_chat.get_chat_messages()
+                        ]
                         if latest_messages:
                             latest = latest_messages[0].to_dict()
                             debate_messages.append(latest)
@@ -177,4 +182,3 @@ async def http_cosmos_support(request_body: CosmosSupportRequest = Body(...)):
                         logger.warning(f"Could not capture debate message: {str(e)}")
 
     return StreamingResponse(stream_response(), media_type="application/json")
-
