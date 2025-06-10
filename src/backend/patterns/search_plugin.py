@@ -17,7 +17,8 @@ def azure_ai_search_plugin(
     query: str,
     select: str = "chunk_id,parent_id,chunk,title",
     k: int = 10,
-    semantic_configuration: str = "cosmos-rag-semantic-configuration",
+    #semantic_configuration: str = "cosmos-rag-semantic-configuration",
+    semantic_configuration: str = "rag-dmindexbrazilnewsbot-semantic-configuration",
     vector_field: str = "text_vector",
     query_type: str = "semantic",
     query_language: str = "en-GB",
@@ -33,7 +34,8 @@ def azure_ai_search_plugin(
 
     search_endpoint = os.getenv("AZURE_AI_SEARCH_ENDPOINT")
     search_api_key = os.getenv("AZURE_AI_SEARCH_API_KEY")
-    index_name = "cosmos-rag"
+    #index_name = "cosmos-rag"  # Original index name
+    index_name = "rag-dmindexbrazilnewsbot"
 
     if not search_endpoint or not search_api_key:
         logger.error("Azure AI Search endpoint and API key must be set.")

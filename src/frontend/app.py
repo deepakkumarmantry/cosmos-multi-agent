@@ -92,9 +92,9 @@ load_dotenv_from_azd()
 
 # Set page config
 st.set_page_config(
-    page_title="Azure Cosmos DB Support Chat", page_icon="💬", layout="wide"
+    page_title="BAT Brazil news agnet", page_icon="💬", layout="wide"
 )
-
+st.logo("images/bat_brazil_logo.png",size="large")
 # Initialize session state for messages if it doesn't exist
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -112,7 +112,7 @@ if "max_iterations" not in st.session_state:
     st.session_state.max_iterations = 10
 
 # Setup sidebar with user information and logout link
-st.sidebar.title("Azure Cosmos DB Support")
+st.sidebar.title("Brazil news support")
 st.sidebar.write(f"Welcome, {get_principal_display_name()}!")
 st.sidebar.markdown(
     '<a href="/.auth/logout" target = "_self">Sign Out</a>', unsafe_allow_html=True
@@ -133,29 +133,30 @@ st.session_state.show_debate_details = st.sidebar.checkbox(
 st.session_state.max_iterations = st.sidebar.slider(
     "Maximum agent iterations",
     min_value=1,
-    max_value=20,
+    max_value=5,
     value=st.session_state.max_iterations,
     help="Maximum number of conversation turns between agents",
 )
 
 # Add some helpful information in the sidebar
 st.sidebar.markdown("---")
-st.sidebar.header("About the Cosmos DB Support Chat")
+st.sidebar.header("About the BAT Brazil news agent chat")
 st.sidebar.markdown("""
-This chat interface connects you with specialized Azure Cosmos DB agents that can help with:
+This chat interface connects you with specialized News agents that can help with:
 
-- Evaluating if Cosmos DB fits your use case
-- Designing optimal data models and schemas
-- Understanding pricing and cost optimization
-- Planning integration with other Azure services
+- Answering questions about news in Brazil from various sources
+- Providing expert advice on news topics
+- PReparing analytics views and reports
+- Discussing news trends and insights
+- Assisting with data integration and analysis                    
 
 Ask a specific question to get started!
 """)
 
 # Main content area - chat interface
-st.title("Azure Cosmos DB Support Chat")
+st.title("BAT Brazil News Agent Chat")
 st.markdown(
-    "Chat with specialized Azure Cosmos DB agents to get expert advice on your database needs."
+    "Chat with specialized news agents to get expert advice on various news."
 )
 
 # Display chat messages from history
@@ -187,7 +188,7 @@ for message in st.session_state.messages:
             st.markdown(message["content"])
 
 # React to user input
-if prompt := st.chat_input("Ask about Azure Cosmos DB..."):
+if prompt := st.chat_input("Ask about the news..."):
     # Display user message in chat message container
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -223,7 +224,7 @@ if prompt := st.chat_input("Ask about Azure Cosmos DB..."):
 
             # Show initial status
             with thinking_container:
-                st.markdown("**Evaluating your Cosmos DB requirements...**")
+                st.markdown("**Evaluating your requirements...**")
 
             with requests.post(url, json=payload, stream=True) as response:
                 final_response = None
@@ -266,7 +267,7 @@ if prompt := st.chat_input("Ask about Azure Cosmos DB..."):
                             # Update the thinking process container
                             with thinking_container:
                                 st.markdown(
-                                    "**Evaluating your Cosmos DB requirements...**"
+                                    "**Evaluating your requirements...**"
                                 )
                                 st.markdown("")
                                 for msg in st.session_state.status_messages:
@@ -284,7 +285,7 @@ if prompt := st.chat_input("Ask about Azure Cosmos DB..."):
 
                         # Update the thinking process container
                         with thinking_container:
-                            st.markdown("**Evaluating your Cosmos DB requirements...**")
+                            st.markdown("**Evaluating your requirements...**")
                             st.markdown("")
                             for msg in st.session_state.status_messages:
                                 st.markdown(f"• {msg}")
